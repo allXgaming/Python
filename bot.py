@@ -154,36 +154,27 @@ def http_post_json(url, payload, timeout=10):
             return r.read().decode('utf-8')
     except: return None
 
-# ═══════════════════ UI FORMATTERS (SUBHA MODS AI DESIGN) ═══════════════════
+# ═══════════════════ UI FORMATTERS ═══════════════════
 def format_prediction_ui(pred_data, period):
-    size = pred_data["size"]
-    conf = pred_data["confidence"]
-    num_range = pred_data["range"]
-    ma_val = pred_data.get("ma", "BULLISH")
-    rsi_val = pred_data.get("rsi", 63.8)
-    std_val = pred_data.get("std", "LOW")
-    pattern = pred_data.get("pattern", "ALTERNATING")
-    cycle = pred_data.get("cycle", "STABLE")
-    big_pct = pred_data.get("big_pct", 78)
-    small_pct = pred_data.get("small_pct", 22)
-    
-    signal = "HIGH 🟢" if conf >= 85 else "MEDIUM 🟡"
-    
-    big_bar = "█" * int(big_pct / 10) + "░" * (10 - int(big_pct / 10))
-    small_bar = "█" * int(small_pct / 10) + "░" * (10 - int(small_pct / 10))
-    
+    size = pred_data["size"]; conf = pred_data["confidence"]; rng = pred_data["range"]
+    ma = pred_data.get("ma","BULLISH"); rsi = pred_data.get("rsi",63.8); std = pred_data.get("std","LOW")
+    pattern = pred_data.get("pattern","ALTERNATING"); cycle = pred_data.get("cycle","STABLE")
+    big_pct = pred_data.get("big_pct",78); small_pct = pred_data.get("small_pct",22)
+    signal = "HIGH 🟢" if conf>=85 else "MEDIUM 🟡"
+    big_bar = "█"*int(big_pct/10)+"░"*(10-int(big_pct/10))
+    small_bar = "█"*int(small_pct/10)+"░"*(10-int(small_pct/10))
     pattern_short = pattern[:3].upper() if pattern else "---"
-    
+    size_emoji = "🐘" if size=="BIG" else "🐭"
     ui = f"""
-╭━━━ ⚡ SUBHA MODS AI ⚡ ━━━╮
+╭━━━ ⚡ PREDICTOR AI ⚡ ━━━╮
 ┃ 🎯 NEXT PREDICTION
 ┃ 🆔 {period}
 ┃ (🧠+🫀)FINAL PREDICTION  {size}
-┃ 🔢 NUMBER : {num_range}
+┃ 🔢 NUMBER : {rng}
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃ 📈 Trend : {ma_val}
-┃ 📊 RSI   : {rsi_val:.1f}
-┃ 📉 Vol.  : {std_val}
+┃ 📈 Trend : {ma}
+┃ 📊 RSI   : {rsi:.1f}
+┃ 📉 Vol.  : {std}
 ┃ 🔄 Ptrn. : {pattern_short}
 ┃ 🎯 Cycle : {cycle}
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━┫
@@ -194,25 +185,17 @@ def format_prediction_ui(pred_data, period):
 ┃ 📶 Signal : {signal}
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━┫
 ┃ ⚡ ACTIVE • LIVE
-┃ 🧠 SUBHA AI
+┃ 🧠 PREDICTOR AI
 ╰━━━━━━━━━━━━━━━━━━━━━━━━━╯
 """
     return ui
 
 def format_result_ui(period, number, actual_size, result, pred, range_pred):
     if result == "WIN":
-        status_emoji = "✅"
-        status_text = "WIN 🎉"
-        bg = "🟢"
-        jackpot_line = "🎰 JACKPOT! 🥳"
+        status_emoji = "✅"; status_text = "WIN 🎉"; bg = "🟢"; jackpot_line = "🎰 JACKPOT! 🥳"
     else:
-        status_emoji = "❌"
-        status_text = "LOSS 😞"
-        bg = "🔴"
-        jackpot_line = "😔 NEXT TIME"
-    
+        status_emoji = "❌"; status_text = "LOSS 😞"; bg = "🔴"; jackpot_line = "😔 NEXT TIME"
     actual_emoji = "🐘" if actual_size == "BIG" else "🐭"
-    
     ui = f"""
 ╭━━━ {status_emoji} RESULT ━━━╮
 ┃ {status_emoji} {status_text}  {bg}
@@ -262,7 +245,6 @@ def format_first_last_ui(first_two, last_two):
     return text
 
 def format_user_list_ui():
-    """Google Sheet থেকে ইউজার তালিকা তৈরি করে (শুধু অ্যাডমিনের জন্য)"""
     with sheet_lock:
         users = list(sheet_data_cache)
     total = len(users)
@@ -283,7 +265,7 @@ def format_user_list_ui():
         tid = u.get('Telegram ID','')
         exp = u.get('Expired (Date and Time)','')
         lines.append(f"{icon} {name} | @{username} | ID:{tid} | UID:{uid} | Exp: {exp}")
-    header = f"👥 *User List*\n━━━━━━━━━━━━━━━━\n📊 Total: {total} | 🟢 Active: {active} | 🔴 Deactive: {deactive}\n━━━━━━━━━━━━━━━━\n"
+    header = f"👥 User List\n━━━━━━━━━━━━━━━━\n📊 Total: {total} | 🟢 Active: {active} | 🔴 Deactive: {deactive}\n━━━━━━━━━━━━━━━━\n"
     if lines:
         return header + "\n".join(lines)
     else:
@@ -315,6 +297,7 @@ class Predictor:
             return data.get("data",{}).get("list",[]) if data else []
         except: return []
 
+    # ---------- Indicators ----------
     def ma(self, d, w): return sum(d[-w:])/w if len(d)>=w else (sum(d)/len(d) if d else 0)
     def rsi(self, d, w=14):
         if len(d)<w+1: return 50
@@ -333,8 +316,7 @@ class Predictor:
         hist = list(self.history)
         if len(hist)<20:
             return "BIG",60,"5 • 9","BULLISH",50,"LOW","NEUTRAL","STABLE",50,50
-        last = hist[-1]
-        last_size = "BIG" if last>=5 else "SMALL"
+        last = hist[-1]; last_size = "BIG" if last>=5 else "SMALL"
         specials = {0:("SMALL",99,"0 • 2"),4:("SMALL",99,"3 • 5"),
                     5:("BIG",99,"5 • 7"),9:("SMALL",99,"7 • 9")}
         if last in specials:
@@ -409,9 +391,9 @@ class Predictor:
         else: self.losses+=1; self.streak=0
         self.total_predictions+=1
 
-    def send_message(self, text):
+    def send_message(self, text, parse_mode="Markdown"):
         if self.chat_id:
-            try: http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":self.chat_id,"text":text,"parse_mode":"Markdown"})
+            try: http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":self.chat_id,"text":text,"parse_mode":parse_mode})
             except: pass
 
     def start_loop(self):
@@ -543,7 +525,7 @@ def process_message(chat_id, user_id, text):
             buttons.append([{"text":"USER LIST","callback_data":"user_list"},
                             {"text":"SHOW DATA","callback_data":"show_data"}])
         else:
-            buttons.append([{"text":"CONTACT","url":"https://t.me/@Subha_892"}])
+            buttons.append([{"text":"CONTACT","url":"https://t.me/Subha_892"}])
         http_post_json(TELEGRAM_API+"sendMessage",{
             "chat_id":chat_id,
             "text":f"Predictor v1.0.0\nWelcome {name} 😈\n\nUse buttons below.",
@@ -563,7 +545,7 @@ def process_message(chat_id, user_id, text):
             pred = predictors[chat_id]
             _, info = get_user_info(user_id)
             name = info.get('Name','User') if info else 'User'
-            stats = (f"{name}\n 😎"
+            stats = (f"{name} 😎\n"
                      f"🤑 Wins: {pred.wins}\n"
                      f"😱 Losses: {pred.losses}\n"
                      f"🔥 Streak: {pred.streak}\n"
@@ -595,7 +577,9 @@ def process_message(chat_id, user_id, text):
         if user_id not in ADMIN_USER_IDS:
             http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":"Admin only.","parse_mode":"Markdown"})
             return
-        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":format_user_list_ui(),"parse_mode":"Markdown"})
+        user_list_msg = format_user_list_ui()
+        # Send as plain text to avoid Markdown parsing issues with special chars in usernames
+        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":user_list_msg})
 
 def process_callback(chat_id, user_id, data):
     status = get_user_status(user_id)
@@ -622,7 +606,7 @@ def process_callback(chat_id, user_id, data):
     elif data == "status":
         _, info = get_user_info(user_id)
         name = info.get('Name','User') if info else 'User'
-        stats = (f"{name}\n 😎"
+        stats = (f"{name} 😎\n"
                  f"🤑 Wins: {pred.wins}\n"
                  f"😱 Losses: {pred.losses}\n"
                  f"🔥 Streak: {pred.streak}\n"
@@ -649,11 +633,13 @@ def process_callback(chat_id, user_id, data):
         if user_id not in ADMIN_USER_IDS:
             pred.send_message("Admin only.")
             return
-        pred.send_message(format_user_list_ui())
+        user_list_msg = format_user_list_ui()
+        # Plain text to avoid Markdown issues with underscores etc.
+        pred.send_message(user_list_msg, parse_mode="")
 
 def main():
     global last_update_id
-    print("Bot started with SUBHA MODS AI UI + User List feature.")
+    print("Bot started with PREDICTOR AI UI, fixed User List, and corrected stats.")
     while True:
         try:
             updates = get_updates(last_update_id+1 if last_update_id else None)
