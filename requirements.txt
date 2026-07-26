@@ -1,1 +1,2 @@
-# Python built-ins only - no external dependencies
+flask
+python-telegram-bot
