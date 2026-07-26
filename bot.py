@@ -1,31 +1,35 @@
-
-from flask import Flask
-from threading import Thread
-import os
-app = Flask('')
-@app.route('/')
-def home(): return "Bot is alive!"
-def run(): app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
-def keep_alive(): Thread(target=run).start()
-
-keep_alive()
-
 import time, threading, math, sqlite3, json, urllib.request, urllib.error, urllib.parse
 from collections import deque, Counter
 from datetime import datetime, timezone, timedelta
+from flask import Flask
+import os
+
+# ═══════════════════════ FLASK KEEP-ALIVE ═══════════════════════
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
 
 # ═══════════════════════ CONFIGURATION ═══════════════════════
-BOT_TOKEN = "7768747736:AAHRFAiemrbWwo2aCY0geWyBBY385gPJcZ8"               # 🔁 আপনার বট টোকেন
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"               # 🔁 আপনার বট টোকেন
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?ts={}"
 
-SHEET_ID = "1Tbpkg2licG_RxRV4yCgtJ9KJEoCafuW0IFYZ5_SKXeI"          # 🔁 আপনার শিট আইডি
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"          # 🔁 আপনার শিট আইডি
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
-ADMIN_USER_IDS = {5824157133}                   # 🔁 অ্যাডমিন টেলিগ্রাম আইডি
-ADMIN_USERNAME = "Mrperfectguidesofficial"                # 🔁 অ্যাডমিন টেলিগ্রাম ইউজারনেম (@ ছাড়া)
+ADMIN_USER_IDS = {1234567890}                   # 🔁 অ্যাডমিন টেলিগ্রাম আইডি
+ADMIN_USERNAME = "your_username"                # 🔁 অ্যাডমিন টেলিগ্রাম ইউজারনেম (@ ছাড়া)
 
-# Indian Standard Time (UTC+5:30)
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ═══════════════════ GOOGLE SHEETS SYNC ═══════════════════
@@ -87,7 +91,6 @@ def get_user_info(user_id):
                         except ValueError:
                             continue
                     if expired_dt:
-                        # Make expired_dt offset‑aware by assuming it is in IST
                         expired_dt = expired_dt.replace(tzinfo=IST)
                         if datetime.now(IST) > expired_dt:
                             return 'deactive', user
@@ -284,7 +287,7 @@ def format_user_list_ui():
         lines.append(f"{icon} {name} | @{username} | ID:{tid} | UID:{uid} | Exp: {exp}")
     header = f"👥 User List\n━━━━━━━━━━━━━━━━\n📊 Total: {total} | 🟢 Active: {active} | 🔴 Deactive: {deactive}\n━━━━━━━━━━━━━━━━\n"
     if lines:
-        return header + "\n\n".join(lines)   # extra blank line between users
+        return header + "\n\n".join(lines)
     else:
         return header + "No users found."
 
@@ -423,7 +426,7 @@ class Predictor:
             for f in fmts:
                 try:
                     exp_dt = datetime.strptime(exp_str, f)
-                    exp_dt = exp_dt.replace(tzinfo=IST)   # assume IST
+                    exp_dt = exp_dt.replace(tzinfo=IST)
                     delay = (exp_dt - datetime.now(IST)).total_seconds()
                     if delay > 0:
                         self.expiry_timer = threading.Timer(delay, self._auto_stop)
@@ -480,7 +483,7 @@ class Predictor:
                 # ---------- NEW PERIOD ----------
                 if period not in seen:
                     if number is not None:
-                        self.update(number, period)   # will also add to history, but we already handled result above
+                        self.update(number, period)
                     seen.add(period)
 
                     next_period = str(int(period) + 1)
@@ -689,4 +692,5 @@ def main():
             print("Main error:", e); time.sleep(5)
 
 if __name__ == "__main__":
-    main()
+    keep_alive()  # Start Flask health-check server in background
+    main()        # Start Telegram bot polling in main thread
