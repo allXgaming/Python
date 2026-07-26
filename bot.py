@@ -1,6 +1,6 @@
 import time, threading, math, sqlite3, json, urllib.request, urllib.error, urllib.parse
 from collections import deque, Counter
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # ═══════════════════════ CONFIGURATION ═══════════════════════
 BOT_TOKEN = "7768747736:AAHRFAiemrbWwo2aCY0geWyBBY385gPJcZ8"               # 🔁 আপনার বট টোকেন
@@ -12,6 +12,9 @@ SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?forma
 
 ADMIN_USER_IDS = {5824157133}                   # 🔁 অ্যাডমিন টেলিগ্রাম আইডি
 ADMIN_USERNAME = "Mrperfectguidesofficial"                # 🔁 অ্যাডমিন টেলিগ্রাম ইউজারনেম (@ ছাড়া)
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ═══════════════════ GOOGLE SHEETS SYNC ═══════════════════
 sheet_data_cache = []
@@ -71,8 +74,11 @@ def get_user_info(user_id):
                             break
                         except ValueError:
                             continue
-                    if expired_dt and datetime.now() > expired_dt:
-                        return 'deactive', user
+                    if expired_dt:
+                        # Make expired_dt offset‑aware by assuming it is in IST
+                        expired_dt = expired_dt.replace(tzinfo=IST)
+                        if datetime.now(IST) > expired_dt:
+                            return 'deactive', user
                 return 'active', user
     return 'not_found', None
 
@@ -164,7 +170,6 @@ def format_prediction_ui(pred_data, period):
     big_bar = "█"*int(big_pct/10)+"░"*(10-int(big_pct/10))
     small_bar = "█"*int(small_pct/10)+"░"*(10-int(small_pct/10))
     pattern_short = pattern[:3].upper() if pattern else "---"
-    size_emoji = "🐘" if size=="BIG" else "🐭"
     ui = f"""
 ╭━━━ ⚡ PREDICTOR AI ⚡ ━━━╮
 ┃ 🎯 NEXT PREDICTION
@@ -216,13 +221,14 @@ def format_profile(user_info):
     tid = user_info.get('Telegram ID','')
     exp_raw = user_info.get('Expired (Date and Time)','')
     fmts = ["%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S"]
+    exp_formatted = exp_raw
     for f in fmts:
         try:
             dt = datetime.strptime(exp_raw, f)
             exp_formatted = dt.strftime("%d/%m/%Y %H:%M:%S")
             break
         except:
-            exp_formatted = exp_raw
+            pass
     return f"""Profile 😇
 ━━━━━━━━━━━━━━━━━━━━━━
 Name        : {name}
@@ -248,8 +254,7 @@ def format_user_list_ui():
     with sheet_lock:
         users = list(sheet_data_cache)
     total = len(users)
-    active = 0
-    deactive = 0
+    active = deactive = 0
     lines = []
     for u in users:
         status, _ = get_user_info(u['telegram_id'])
@@ -267,7 +272,7 @@ def format_user_list_ui():
         lines.append(f"{icon} {name} | @{username} | ID:{tid} | UID:{uid} | Exp: {exp}")
     header = f"👥 User List\n━━━━━━━━━━━━━━━━\n📊 Total: {total} | 🟢 Active: {active} | 🔴 Deactive: {deactive}\n━━━━━━━━━━━━━━━━\n"
     if lines:
-        return header + "\n".join(lines)
+        return header + "\n\n".join(lines)   # extra blank line between users
     else:
         return header + "No users found."
 
@@ -406,7 +411,8 @@ class Predictor:
             for f in fmts:
                 try:
                     exp_dt = datetime.strptime(exp_str, f)
-                    delay = (exp_dt - datetime.now()).total_seconds()
+                    exp_dt = exp_dt.replace(tzinfo=IST)   # assume IST
+                    delay = (exp_dt - datetime.now(IST)).total_seconds()
                     if delay > 0:
                         self.expiry_timer = threading.Timer(delay, self._auto_stop)
                         self.expiry_timer.daemon = True
@@ -443,24 +449,38 @@ class Predictor:
                 try: number = int(latest.get("number",""))
                 except: number = None
                 if not period or not period.isdigit(): time.sleep(1); continue
-                if period not in seen:
-                    if number is not None: self.update(number, period)
-                    seen.add(period)
-                    next_period = str(int(period)+1)
-                    pred_data = self.get_next_prediction()
-                    if pred_data["confidence"] >= 85:
-                        current_prediction = {"period":next_period,"size":pred_data["size"],"range":pred_data["range"]}
-                        self.send_message(format_prediction_ui(pred_data, next_period))
-                if current_prediction and current_prediction["period"]==period and number is not None:
-                    actual_size = "BIG" if number>=5 else "SMALL"
+
+                # ---------- RESULT CHECK FIRST ----------
+                if current_prediction and current_prediction["period"] == period and number is not None:
+                    actual_size = "BIG" if number >= 5 else "SMALL"
                     won = (actual_size == current_prediction["size"])
                     res = "WIN" if won else "LOSS"
                     self.update_result(won)
-                    self.update(number, period, prediction=current_prediction["size"],
-                                result=res, range_pred=current_prediction["range"])
+                    self.update(number, period,
+                                prediction=current_prediction["size"],
+                                result=res,
+                                range_pred=current_prediction["range"])
                     self.send_message(format_result_ui(period, number, actual_size, res,
-                                                       current_prediction["size"], current_prediction["range"]))
+                                                       current_prediction["size"],
+                                                       current_prediction["range"]))
                     current_prediction = None
+
+                # ---------- NEW PERIOD ----------
+                if period not in seen:
+                    if number is not None:
+                        self.update(number, period)   # will also add to history, but we already handled result above
+                    seen.add(period)
+
+                    next_period = str(int(period) + 1)
+                    pred_data = self.get_next_prediction()
+                    if pred_data["confidence"] >= 85:
+                        current_prediction = {
+                            "period": next_period,
+                            "size": pred_data["size"],
+                            "range": pred_data["range"]
+                        }
+                        self.send_message(format_prediction_ui(pred_data, next_period))
+
                 time.sleep(1)
             except Exception as e:
                 print("Loop error:", e); time.sleep(2)
@@ -525,7 +545,7 @@ def process_message(chat_id, user_id, text):
             buttons.append([{"text":"USER LIST","callback_data":"user_list"},
                             {"text":"SHOW DATA","callback_data":"show_data"}])
         else:
-            buttons.append([{"text":"CONTACT","url":"https://t.me/Subha_892"}])
+            buttons.append([{"text":"CONTACT","url":"https://t.me/your_username"}])
         http_post_json(TELEGRAM_API+"sendMessage",{
             "chat_id":chat_id,
             "text":f"Predictor v1.0.0\nWelcome {name} 😈\n\nUse buttons below.",
@@ -578,8 +598,7 @@ def process_message(chat_id, user_id, text):
             http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":"Admin only.","parse_mode":"Markdown"})
             return
         user_list_msg = format_user_list_ui()
-        # Send as plain text to avoid Markdown parsing issues with special chars in usernames
-        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":user_list_msg})
+        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":user_list_msg})   # plain text
 
 def process_callback(chat_id, user_id, data):
     status = get_user_status(user_id)
@@ -634,12 +653,11 @@ def process_callback(chat_id, user_id, data):
             pred.send_message("Admin only.")
             return
         user_list_msg = format_user_list_ui()
-        # Plain text to avoid Markdown issues with underscores etc.
-        pred.send_message(user_list_msg, parse_mode="")
+        pred.send_message(user_list_msg, parse_mode="")   # plain text
 
 def main():
     global last_update_id
-    print("Bot started with PREDICTOR AI UI, fixed User List, and corrected stats.")
+    print("Bot started with IST time, result before prediction, and fixed UI spacing.")
     while True:
         try:
             updates = get_updates(last_update_id+1 if last_update_id else None)
