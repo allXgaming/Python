@@ -1,8 +1,8 @@
-import time, threading, math, sqlite3, json, urllib.request, urllib.error, urllib.parse
+import time, threading, math, sqlite3, json, os
 from collections import deque, Counter
 from datetime import datetime, timezone, timedelta
+import requests
 from flask import Flask
-import os
 
 # ═══════════════════════ FLASK KEEP-ALIVE ═══════════════════════
 app = Flask(__name__)
@@ -20,15 +20,15 @@ def keep_alive():
     t.start()
 
 # ═══════════════════════ CONFIGURATION ═══════════════════════
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"               # 🔁 আপনার বট টোকেন
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?ts={}"
 
-SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"          # 🔁 আপনার শিট আইডি
+SHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
-ADMIN_USER_IDS = {1234567890}                   # 🔁 অ্যাডমিন টেলিগ্রাম আইডি
-ADMIN_USERNAME = "your_username"                # 🔁 অ্যাডমিন টেলিগ্রাম ইউজারনেম (@ ছাড়া)
+ADMIN_USER_IDS = {1234567890}
+ADMIN_USERNAME = "your_username"
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -38,12 +38,12 @@ sheet_lock = threading.Lock()
 
 def fetch_sheet_csv(url):
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.read().decode('utf-8')
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        if r.status_code == 200:
+            return r.text
     except Exception as e:
         print("Sheet fetch error:", e)
-        return None
+    return None
 
 def parse_sheet(csv_text):
     lines = csv_text.strip().split('\n')
@@ -159,23 +159,26 @@ def get_db_stats():
 
 init_db()
 
-# ═══════════════════ HTTP HELPERS ═══════════════════
+# ═══════════════════ HTTP HELPERS (requests) ═══════════════════
 def http_get_json(url, timeout=10):
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode('utf-8'))
-    except: return None
+        r = requests.get(url, timeout=timeout, headers={'User-Agent': 'Mozilla/5.0'})
+        if r.status_code == 200:
+            return r.json()
+    except:
+        pass
+    return None
 
 def http_post_json(url, payload, timeout=10):
     try:
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read().decode('utf-8')
-    except: return None
+        r = requests.post(url, json=payload, timeout=timeout)
+        if r.status_code == 200:
+            return r.text
+    except:
+        pass
+    return None
 
-# ═══════════════════ UI FORMATTERS ═══════════════════
+# ═══════════════════ UI FORMATTERS (unchanged) ═══════════════════
 def format_prediction_ui(pred_data, period):
     size = pred_data["size"]; conf = pred_data["confidence"]; rng = pred_data["range"]
     ma = pred_data.get("ma","BULLISH"); rsi = pred_data.get("rsi",63.8); std = pred_data.get("std","LOW")
@@ -509,10 +512,11 @@ def get_updates(offset=None):
     params = {"timeout":30}
     if offset: params["offset"] = offset
     try:
-        full_url = url + "?" + urllib.parse.urlencode(params)
-        data = http_get_json(full_url, timeout=35)
-        return data.get("result",[]) if data else []
-    except: return []
+        r = requests.get(url, params=params, timeout=35)
+        if r.status_code == 200:
+            return r.json().get("result", [])
+    except: pass
+    return []
 
 def send_unauthorized(chat_id):
     http_post_json(TELEGRAM_API+"sendMessage", {
@@ -613,7 +617,7 @@ def process_message(chat_id, user_id, text):
             http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":"Admin only.","parse_mode":"Markdown"})
             return
         user_list_msg = format_user_list_ui()
-        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":user_list_msg})   # plain text
+        http_post_json(TELEGRAM_API+"sendMessage",{"chat_id":chat_id,"text":user_list_msg})
 
 def process_callback(chat_id, user_id, data):
     status = get_user_status(user_id)
@@ -668,7 +672,7 @@ def process_callback(chat_id, user_id, data):
             pred.send_message("Admin only.")
             return
         user_list_msg = format_user_list_ui()
-        pred.send_message(user_list_msg, parse_mode="")   # plain text
+        pred.send_message(user_list_msg, parse_mode="")
 
 def main():
     global last_update_id
@@ -692,5 +696,5 @@ def main():
             print("Main error:", e); time.sleep(5)
 
 if __name__ == "__main__":
-    keep_alive()  # Start Flask health-check server in background
-    main()        # Start Telegram bot polling in main thread
+    keep_alive()
+    main()
